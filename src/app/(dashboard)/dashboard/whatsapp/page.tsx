@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -571,6 +572,9 @@ export default function WhatsAppPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-2xl">Conectar</DialogTitle>
+            <DialogDescription>
+              Digite seu numero de telefone e escolha como deseja conectar
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
