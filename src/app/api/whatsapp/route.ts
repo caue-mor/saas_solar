@@ -326,12 +326,20 @@ export async function POST(request: NextRequest) {
               const retryResult = await connectInstance(token, connectionType, phone);
 
               if (retryResult.success) {
+                // Salvar status E número (igual ConectUazapi)
+                const retryUpdates: Record<string, unknown> = {
+                  whatsapp_status: "connecting",
+                  last_update: new Date().toISOString(),
+                };
+
+                if (phone) {
+                  retryUpdates.whatsapp_numero = phone;
+                  retryUpdates.numero_atendimento = phone;
+                }
+
                 await supabase
                   .from("acessos_fotovoltaico")
-                  .update({
-                    whatsapp_status: "connecting",
-                    last_update: new Date().toISOString(),
-                  })
+                  .update(retryUpdates)
                   .eq("id", Number(empresaId));
 
                 return NextResponse.json({
@@ -353,13 +361,21 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Atualizar status
+        // Atualizar status E número (se fornecido via paircode)
+        const connectUpdates: Record<string, unknown> = {
+          whatsapp_status: "connecting",
+          last_update: new Date().toISOString(),
+        };
+
+        // Salvar número imediatamente (igual ConectUazapi)
+        if (phone) {
+          connectUpdates.whatsapp_numero = phone;
+          connectUpdates.numero_atendimento = phone;
+        }
+
         await supabase
           .from("acessos_fotovoltaico")
-          .update({
-            whatsapp_status: "connecting",
-            last_update: new Date().toISOString(),
-          })
+          .update(connectUpdates)
           .eq("id", Number(empresaId));
 
         return NextResponse.json({
