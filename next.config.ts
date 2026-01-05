@@ -18,6 +18,19 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
+  async headers() {
+    return [
+      {
+        source: "/site.webmanifest",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/manifest+json",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
