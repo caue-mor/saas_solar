@@ -250,15 +250,8 @@ export default function WhatsAppPage() {
   };
 
   // Conectar via QR Code ou PairCode
+  // Backend cria instância automaticamente se necessário
   const handleConnect = async () => {
-    // Se instância não existe, criar primeiro
-    if (status?.status === "not_created") {
-      const createResult = await executeAction("create");
-      if (!createResult?.success) {
-        return; // Falhou ao criar, não continua
-      }
-    }
-
     const params: Record<string, unknown> = {
       type: connectionType,
     };

@@ -224,17 +224,13 @@ export async function POST(request: NextRequest) {
 
       // ==========================================
       // CONECTAR (QR CODE OU PAIRCODE)
+      // Cria instância automaticamente se não existir
       // ==========================================
       case "connect": {
-        if (!empresa.token_whatsapp) {
-          return NextResponse.json(
-            { error: "Instância não criada. Crie primeiro usando action='create'" },
-            { status: 400 }
-          );
-        }
-
-        const connectionType = params.type || "qrcode"; // "qrcode" ou "paircode"
+        const connectionType = params.type || "qrcode";
         const phone = params.phone;
+        let token = empresa.token_whatsapp;
+        let newInstanceCreated = false;
 
         // Validar telefone se for paircode
         if (connectionType === "paircode") {
@@ -252,15 +248,104 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Se não tem token, criar instância primeiro (igual ConectUazapi)
+        if (!token) {
+          console.log(`[API WhatsApp] Sem instância, criando automaticamente...`);
+
+          const instanceName = `solar-${empresa.slug || empresa.id}`;
+          const createResult = await createInstance(instanceName, {
+            adminField01: empresa.email || String(empresaId),
+            webhookUrl: AGENT_WEBHOOK_URL,
+            webhookEvents: [
+              "messages",
+              "messages.upsert",
+              "messages.update",
+              "connection.update",
+              "qrcode.updated",
+            ],
+          });
+
+          if (!createResult.success) {
+            console.error(`[API WhatsApp] Erro ao criar instância:`, createResult.error);
+            return NextResponse.json(
+              { error: createResult.error || "Erro ao criar instância" },
+              { status: 500 }
+            );
+          }
+
+          token = createResult.data?.token;
+          newInstanceCreated = true;
+
+          // Salvar token no banco
+          await supabase
+            .from("acessos_fotovoltaico")
+            .update({
+              token_whatsapp: token,
+              uazapi_instancia: createResult.data?.instance?.id || token,
+              webhook_url: AGENT_WEBHOOK_URL,
+              whatsapp_status: "disconnected",
+              last_update: new Date().toISOString(),
+            })
+            .eq("id", Number(empresaId));
+
+          console.log(`[API WhatsApp] Instância criada: ${instanceName}`);
+        }
+
+        // Agora conectar
         console.log(`[API WhatsApp] Conectando via ${connectionType}${phone ? ` - ${phone}` : ""}`);
 
-        const result = await connectInstance(
-          empresa.token_whatsapp,
-          connectionType,
-          phone
-        );
+        const result = await connectInstance(token, connectionType, phone);
 
         if (!result.success) {
+          // Se falhou e tinha token antigo, pode ser instância inválida
+          // Tentar criar nova (igual ConectUazapi)
+          if (!newInstanceCreated && empresa.token_whatsapp) {
+            console.log(`[API WhatsApp] Falha ao conectar, criando nova instância...`);
+
+            const instanceName = `solar-${empresa.slug || empresa.id}-${Date.now()}`;
+            const createResult = await createInstance(instanceName, {
+              adminField01: empresa.email || String(empresaId),
+              webhookUrl: AGENT_WEBHOOK_URL,
+              webhookEvents: ["messages", "messages.upsert", "connection.update"],
+            });
+
+            if (createResult.success) {
+              token = createResult.data?.token;
+
+              await supabase
+                .from("acessos_fotovoltaico")
+                .update({
+                  token_whatsapp: token,
+                  uazapi_instancia: createResult.data?.instance?.id || token,
+                  webhook_url: AGENT_WEBHOOK_URL,
+                  last_update: new Date().toISOString(),
+                })
+                .eq("id", Number(empresaId));
+
+              // Tentar conectar com nova instância
+              const retryResult = await connectInstance(token, connectionType, phone);
+
+              if (retryResult.success) {
+                await supabase
+                  .from("acessos_fotovoltaico")
+                  .update({
+                    whatsapp_status: "connecting",
+                    last_update: new Date().toISOString(),
+                  })
+                  .eq("id", Number(empresaId));
+
+                return NextResponse.json({
+                  success: true,
+                  status: "connecting",
+                  qrcode: retryResult.data?.qrcode,
+                  paircode: retryResult.data?.paircode,
+                  connectionType,
+                  new_instance_created: true,
+                });
+              }
+            }
+          }
+
           console.error(`[API WhatsApp] Erro ao conectar:`, result.error);
           return NextResponse.json(
             { error: result.error || "Erro ao conectar na UAZAPI" },
@@ -283,6 +368,7 @@ export async function POST(request: NextRequest) {
           qrcode: result.data?.qrcode,
           paircode: result.data?.paircode,
           connectionType,
+          new_instance_created: newInstanceCreated,
         });
       }
 
