@@ -276,8 +276,10 @@ export async function POST(request: NextRequest) {
           token = createResult.data?.token;
           newInstanceCreated = true;
 
-          // Salvar token no banco
-          await supabase
+          console.log(`[API WhatsApp] Token da nova instância: ${token}`);
+
+          // Salvar token no banco com verificação de erro
+          const { error: saveError } = await supabase
             .from("acessos_fotovoltaico")
             .update({
               token_whatsapp: token,
@@ -287,6 +289,32 @@ export async function POST(request: NextRequest) {
               last_update: new Date().toISOString(),
             })
             .eq("id", Number(empresaId));
+
+          if (saveError) {
+            console.error(`[API WhatsApp] Erro ao salvar token no Supabase:`, saveError);
+          } else {
+            console.log(`[API WhatsApp] Token salvo no Supabase com sucesso`);
+          }
+
+          // Configurar webhook explicitamente (garantia extra)
+          console.log(`[API WhatsApp] Configurando webhook: ${AGENT_WEBHOOK_URL}`);
+          const webhookResult = await setWebhook(token, {
+            url: AGENT_WEBHOOK_URL,
+            enabled: true,
+            events: [
+              "messages",
+              "messages.upsert",
+              "messages.update",
+              "connection.update",
+              "qrcode.updated",
+            ],
+          });
+
+          if (webhookResult.success) {
+            console.log(`[API WhatsApp] Webhook configurado com sucesso`);
+          } else {
+            console.error(`[API WhatsApp] Erro ao configurar webhook:`, webhookResult.error);
+          }
 
           console.log(`[API WhatsApp] Instância criada: ${instanceName}`);
         }
@@ -374,16 +402,30 @@ export async function POST(request: NextRequest) {
           last_update: new Date().toISOString(),
         };
 
+        // Se nova instância foi criada, garantir que o token está salvo
+        if (newInstanceCreated && token) {
+          connectUpdates.token_whatsapp = token;
+          connectUpdates.webhook_url = AGENT_WEBHOOK_URL;
+        }
+
         // Salvar número imediatamente (igual ConectUazapi)
         if (phone) {
           connectUpdates.whatsapp_numero = phone;
           connectUpdates.numero_atendimento = phone;
         }
 
-        await supabase
+        console.log(`[API WhatsApp] Atualizando Supabase:`, JSON.stringify(connectUpdates));
+
+        const { error: updateError } = await supabase
           .from("acessos_fotovoltaico")
           .update(connectUpdates)
           .eq("id", Number(empresaId));
+
+        if (updateError) {
+          console.error(`[API WhatsApp] Erro ao atualizar Supabase:`, updateError);
+        } else {
+          console.log(`[API WhatsApp] Supabase atualizado com sucesso`);
+        }
 
         // Extrair QR Code da resposta UAZAPI
         // A resposta vem no formato: { connected, loggedIn, jid, instance: { qrcode, paircode, ... } }
@@ -552,6 +594,91 @@ export async function POST(request: NextRequest) {
           success: true,
           message: "Mensagem enviada com sucesso",
           data: result.data,
+        });
+      }
+
+      // ==========================================
+      // CONFIGURAR INSTÂNCIA EXISTENTE (Setup manual)
+      // ==========================================
+      case "setup": {
+        const { instanceToken } = params;
+
+        if (!instanceToken) {
+          return NextResponse.json(
+            { error: "instanceToken é obrigatório" },
+            { status: 400 }
+          );
+        }
+
+        console.log(`[API WhatsApp] Configurando instância existente com token: ${instanceToken}`);
+
+        // Verificar se o token é válido
+        const statusResult = await getInstanceStatus(instanceToken);
+        if (!statusResult.success) {
+          return NextResponse.json(
+            { error: "Token inválido ou instância não encontrada" },
+            { status: 400 }
+          );
+        }
+
+        // Configurar webhook
+        console.log(`[API WhatsApp] Configurando webhook: ${AGENT_WEBHOOK_URL}`);
+        const webhookResult = await setWebhook(instanceToken, {
+          url: AGENT_WEBHOOK_URL,
+          enabled: true,
+          events: [
+            "messages",
+            "messages.upsert",
+            "messages.update",
+            "connection.update",
+            "qrcode.updated",
+          ],
+        });
+
+        // Atualizar banco de dados
+        const instanceInfo = statusResult.data?.instance || statusResult.data;
+        const apiStatus = (instanceInfo as Record<string, unknown>)?.status as string || statusResult.data?.status || "disconnected";
+        const owner = (instanceInfo as Record<string, unknown>)?.owner as string || statusResult.data?.owner;
+
+        const setupUpdates: Record<string, unknown> = {
+          token_whatsapp: instanceToken,
+          uazapi_instancia: (instanceInfo as Record<string, unknown>)?.id as string || instanceToken,
+          webhook_url: AGENT_WEBHOOK_URL,
+          whatsapp_status: apiStatus,
+          last_update: new Date().toISOString(),
+        };
+
+        if (owner) {
+          const cleanOwner = owner.replace("@s.whatsapp.net", "");
+          setupUpdates.whatsapp_numero = cleanOwner;
+          setupUpdates.numero_atendimento = cleanOwner;
+        }
+
+        if (apiStatus === "connected") {
+          setupUpdates.status_plano = "ativo";
+        }
+
+        const { error: setupError } = await supabase
+          .from("acessos_fotovoltaico")
+          .update(setupUpdates)
+          .eq("id", Number(empresaId));
+
+        if (setupError) {
+          console.error(`[API WhatsApp] Erro ao salvar setup:`, setupError);
+          return NextResponse.json(
+            { error: "Erro ao salvar configuração no banco" },
+            { status: 500 }
+          );
+        }
+
+        console.log(`[API WhatsApp] Instância configurada com sucesso`);
+
+        return NextResponse.json({
+          success: true,
+          message: "Instância configurada com sucesso",
+          status: apiStatus,
+          numero: owner?.replace("@s.whatsapp.net", ""),
+          webhookConfigured: webhookResult.success,
         });
       }
 
