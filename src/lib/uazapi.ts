@@ -481,6 +481,7 @@ export async function restartInstance(
 
 /**
  * Configurar webhook da instância
+ * Baseado no projeto ConectUazapi - endpoint correto: POST /webhook
  */
 export async function setWebhook(
   instanceToken: string,
@@ -488,24 +489,24 @@ export async function setWebhook(
     url: string;
     enabled?: boolean;
     events?: string[];
+    excludeMessages?: string[];
   }
 ): Promise<UazAPIResponse> {
   console.log(`[UAZAPI] Configurando webhook: ${config.url}`);
+
+  const webhookConfig = {
+    enabled: true, // SEMPRE habilitado
+    url: config.url,
+    events: config.events || ["messages", "connection"],
+    excludeMessages: config.excludeMessages || ["wasSentByApi", "isGroupYes"],
+  };
+
+  console.log(`[UAZAPI] Webhook config:`, JSON.stringify(webhookConfig, null, 2));
+
   return makeRequest(
-    "/instance/webhook",
+    "/webhook", // Endpoint correto conforme ConectUazapi
     "POST",
-    {
-      enabled: config.enabled ?? true,
-      url: config.url,
-      events: config.events || [
-        "messages",
-        "messages.upsert",
-        "messages.update",
-        "connection.update",
-        "qrcode.updated",
-        "presence.update",
-      ],
-    },
+    webhookConfig,
     instanceToken
   );
 }

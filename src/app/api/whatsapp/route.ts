@@ -186,13 +186,7 @@ export async function POST(request: NextRequest) {
         const result = await createInstance(instanceName, {
           adminField01: empresa.email || String(empresaId),
           webhookUrl,
-          webhookEvents: [
-            "messages",
-            "messages.upsert",
-            "messages.update",
-            "connection.update",
-            "qrcode.updated",
-          ],
+          webhookEvents: ["messages", "connection"], // Igual ConectUazapi
         });
 
         if (!result.success) {
@@ -363,13 +357,7 @@ export async function POST(request: NextRequest) {
           const createResult = await createInstance(instanceNamePrefix, {
             adminField01: empresa.email || String(empresaId),
             webhookUrl: AGENT_WEBHOOK_URL,
-            webhookEvents: [
-              "messages",
-              "messages.upsert",
-              "messages.update",
-              "connection.update",
-              "qrcode.updated",
-            ],
+            webhookEvents: ["messages", "connection"], // Igual ConectUazapi
           });
 
           if (!createResult.success) {
@@ -405,19 +393,14 @@ export async function POST(request: NextRequest) {
         }
 
         // ========================================
-        // PASSO 4: Configurar webhook (garantia)
+        // PASSO 4: Configurar webhook (POST /webhook - igual ConectUazapi)
         // ========================================
         console.log(`[API WhatsApp] Configurando webhook: ${AGENT_WEBHOOK_URL}`);
         const webhookResult = await setWebhook(token!, {
           url: AGENT_WEBHOOK_URL,
           enabled: true,
-          events: [
-            "messages",
-            "messages.upsert",
-            "messages.update",
-            "connection.update",
-            "qrcode.updated",
-          ],
+          events: ["messages", "connection"], // Igual ConectUazapi
+          excludeMessages: ["wasSentByApi", "isGroupYes"], // Igual ConectUazapi
         });
 
         if (webhookResult.success) {
@@ -427,7 +410,45 @@ export async function POST(request: NextRequest) {
         }
 
         // ========================================
-        // PASSO 5: Conectar (gerar QR Code ou PairCode)
+        // PASSO 5: Salvar TODOS os dados no Supabase ANTES de conectar
+        // (Igual ConectUazapi - salva tudo de uma vez)
+        // ========================================
+        const allDataUpdates: Record<string, unknown> = {
+          // Token e instância
+          token_whatsapp: token,
+          uazapi_instancia: token, // Na tabela fotovoltaico, uazapi_instancia = token
+          // Webhook
+          webhook_url: AGENT_WEBHOOK_URL,
+          // Status - já marcar como connected (igual ConectUazapi)
+          whatsapp_status: "connected",
+          status_plano: "ativo",
+          produto_plano: "IA ATENDIMENTO",
+          // Timestamp
+          last_update: new Date().toISOString(),
+        };
+
+        // Número do WhatsApp
+        if (phone) {
+          allDataUpdates.whatsapp_numero = phone;
+          allDataUpdates.numero_atendimento = phone;
+        }
+
+        console.log(`[API WhatsApp] Salvando TODOS os dados no Supabase:`, JSON.stringify(allDataUpdates, null, 2));
+
+        const { error: saveAllError, data: savedData } = await supabase
+          .from("acessos_fotovoltaico")
+          .update(allDataUpdates)
+          .eq("id", Number(empresaId))
+          .select();
+
+        if (saveAllError) {
+          console.error(`[API WhatsApp] ERRO ao salvar no Supabase:`, saveAllError);
+        } else {
+          console.log(`[API WhatsApp] Dados salvos com sucesso!`, savedData);
+        }
+
+        // ========================================
+        // PASSO 6: Conectar (gerar QR Code ou PairCode)
         // ========================================
         console.log(`[API WhatsApp] Conectando via ${connectionType}...`);
         const result = await connectInstance(token!, connectionType, phone);
@@ -440,33 +461,6 @@ export async function POST(request: NextRequest) {
             { error: result.error || "Erro ao conectar na UAZAPI" },
             { status: 500 }
           );
-        }
-
-        // ========================================
-        // PASSO 6: Atualizar Supabase com status e dados
-        // ========================================
-        const finalUpdates: Record<string, unknown> = {
-          token_whatsapp: token,
-          uazapi_instancia: instanceId,
-          webhook_url: AGENT_WEBHOOK_URL,
-          whatsapp_status: "connecting",
-          last_update: new Date().toISOString(),
-        };
-
-        if (phone) {
-          finalUpdates.whatsapp_numero = phone;
-          finalUpdates.numero_atendimento = phone;
-        }
-
-        const { error: finalUpdateError } = await supabase
-          .from("acessos_fotovoltaico")
-          .update(finalUpdates)
-          .eq("id", Number(empresaId));
-
-        if (finalUpdateError) {
-          console.error(`[API WhatsApp] Erro ao atualizar Supabase final:`, finalUpdateError);
-        } else {
-          console.log(`[API WhatsApp] Supabase atualizado com sucesso`);
         }
 
         // ========================================
@@ -486,12 +480,13 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          status: responseData?.status as string || "connecting",
+          status: "connecting", // Status correto após gerar QR
           qrcode,
           paircode,
           connectionType,
           reusingExisting,
           cleanedDuplicates: cleanedDuplicates.length > 0 ? cleanedDuplicates : undefined,
+          savedToDatabase: !saveAllError, // Indicar se salvou no banco
           token: process.env.NODE_ENV === "development" ? token : undefined,
         });
       }
@@ -556,13 +551,8 @@ export async function POST(request: NextRequest) {
         const result = await setWebhook(empresa.token_whatsapp, {
           url: webhookUrl,
           enabled: true,
-          events: [
-            "messages",
-            "messages.upsert",
-            "messages.update",
-            "connection.update",
-            "qrcode.updated",
-          ],
+          events: ["messages", "connection"], // Igual ConectUazapi
+          excludeMessages: ["wasSentByApi", "isGroupYes"], // Igual ConectUazapi
         });
 
         if (!result.success) {
@@ -573,7 +563,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Salvar URL no banco
-        await supabase
+        const { error: webhookSaveError } = await supabase
           .from("acessos_fotovoltaico")
           .update({
             webhook_url: webhookUrl,
@@ -581,10 +571,15 @@ export async function POST(request: NextRequest) {
           })
           .eq("id", Number(empresaId));
 
+        if (webhookSaveError) {
+          console.error(`[API WhatsApp] Erro ao salvar webhook no banco:`, webhookSaveError);
+        }
+
         return NextResponse.json({
           success: true,
           message: "Webhook configurado com sucesso",
           url: webhookUrl,
+          savedToDatabase: !webhookSaveError,
         });
       }
 
@@ -661,18 +656,13 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Configurar webhook
+        // Configurar webhook (igual ConectUazapi)
         console.log(`[API WhatsApp] Configurando webhook: ${AGENT_WEBHOOK_URL}`);
         const webhookResult = await setWebhook(instanceToken, {
           url: AGENT_WEBHOOK_URL,
           enabled: true,
-          events: [
-            "messages",
-            "messages.upsert",
-            "messages.update",
-            "connection.update",
-            "qrcode.updated",
-          ],
+          events: ["messages", "connection"],
+          excludeMessages: ["wasSentByApi", "isGroupYes"],
         });
 
         // Atualizar banco de dados
@@ -749,20 +739,15 @@ export async function POST(request: NextRequest) {
         const apiStatus = result.data?.status || "disconnected";
         const owner = result.data?.owner || result.data?.instance?.owner;
 
-        // Verificar e corrigir webhook se necessário
+        // Verificar e corrigir webhook se necessário (igual ConectUazapi)
         let webhookUpdated = false;
         if (empresa.webhook_url !== AGENT_WEBHOOK_URL) {
           console.log(`[API WhatsApp] Atualizando webhook para: ${AGENT_WEBHOOK_URL}`);
           const webhookResult = await setWebhook(empresa.token_whatsapp, {
             url: AGENT_WEBHOOK_URL,
             enabled: true,
-            events: [
-              "messages",
-              "messages.upsert",
-              "messages.update",
-              "connection.update",
-              "qrcode.updated",
-            ],
+            events: ["messages", "connection"],
+            excludeMessages: ["wasSentByApi", "isGroupYes"],
           });
           webhookUpdated = webhookResult.success;
           if (webhookUpdated) {
