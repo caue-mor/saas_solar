@@ -79,8 +79,18 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Extrair status - pode estar na raiz ou dentro de instance
-      const apiStatus = result.data?.status || result.data?.instance?.status || "disconnected";
+      // Extrair status - UAZAPI retorna:
+      // - result.data.instance.status = string "connected"
+      // - result.data.status = objeto {connected: true, jid: "...", loggedIn: true}
+      const instanceStatus = result.data?.instance?.status;
+      const statusObj = result.data?.status as { connected?: boolean } | string | undefined;
+      const isConnectedFromStatusObj = typeof statusObj === 'object' && statusObj?.connected === true;
+
+      const apiStatus: string = instanceStatus ||
+        (isConnectedFromStatusObj ? "connected" : null) ||
+        (typeof statusObj === 'string' ? statusObj : null) ||
+        "disconnected";
+
       const owner = result.data?.owner || result.data?.instance?.owner;
 
       // Sincronizar dados com o banco se mudou
@@ -108,7 +118,7 @@ export async function GET(request: NextRequest) {
         status: apiStatus,
         qrcode: result.data?.qrcode,
         paircode: result.data?.paircode,
-        connected: result.data?.connected || apiStatus === "connected",
+        connected: apiStatus === "connected" || isConnectedFromStatusObj,
         profileName: result.data?.profileName || result.data?.instance?.profileName,
         profilePicUrl: result.data?.profilePicUrl || result.data?.instance?.profilePicUrl,
         empresa: {
