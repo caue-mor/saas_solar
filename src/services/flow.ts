@@ -1,11 +1,27 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import type { CompanyFlow } from "@/types/flow.types";
 import { DEFAULT_GLOBAL_CONFIG } from "@/types/flow.types";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Criar cliente Supabase sob demanda para evitar problemas em serverless
+function getSupabaseClient(): SupabaseClient {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error("[Flow Service] Variáveis de ambiente não configuradas:", {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!supabaseServiceKey,
+    });
+    throw new Error("Supabase não configurado corretamente");
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
 
 export interface FlowResponse {
   success: boolean;
@@ -18,6 +34,7 @@ export interface FlowResponse {
  */
 export async function getFlowByEmpresaId(empresaId: number): Promise<FlowResponse> {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("acessos_fotovoltaico")
       .select("id, empresa, nome_empresa, flow_config")
@@ -69,7 +86,10 @@ export async function getFlowByEmpresaId(empresaId: number): Promise<FlowRespons
  */
 export async function saveFlow(flow: CompanyFlow): Promise<FlowResponse> {
   try {
+    const supabase = getSupabaseClient();
     const { empresaId, ...flowData } = flow;
+
+    console.log("[Flow Service] Salvando fluxo para empresa:", empresaId);
 
     // Incrementa versão
     const novaVersao = (flow.versao || 0) + 1;
@@ -78,6 +98,13 @@ export async function saveFlow(flow: CompanyFlow): Promise<FlowResponse> {
       versao: novaVersao,
       updatedAt: new Date().toISOString(),
     };
+
+    console.log("[Flow Service] Dados a salvar:", {
+      empresaId,
+      versao: novaVersao,
+      nodesCount: flowData.nodes?.length || 0,
+      edgesCount: flowData.edges?.length || 0,
+    });
 
     const { data, error } = await supabase
       .from("acessos_fotovoltaico")
@@ -93,6 +120,13 @@ export async function saveFlow(flow: CompanyFlow): Promise<FlowResponse> {
       console.error("[Flow Service] Erro ao salvar fluxo:", error);
       return { success: false, error: error.message };
     }
+
+    if (!data) {
+      console.error("[Flow Service] Nenhum dado retornado após update - empresa não existe?");
+      return { success: false, error: "Empresa não encontrada ou sem permissão" };
+    }
+
+    console.log("[Flow Service] Fluxo salvo com sucesso:", data.id);
 
     return {
       success: true,
