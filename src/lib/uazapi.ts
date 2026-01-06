@@ -13,7 +13,7 @@
  * - not_created: Instância ainda não foi criada
  */
 
-const UAZAPI_BASE_URL = process.env.UAZAPI_BASE_URL || "https://uazapi.com";
+const UAZAPI_BASE_URL = process.env.UAZAPI_BASE_URL || "https://api.uazapi.com";
 const UAZAPI_ADMIN_TOKEN = process.env.UAZAPI_API_KEY || process.env.UAZAPI_GLOBAL_TOKEN || "";
 
 // ============================================
@@ -324,7 +324,9 @@ export async function connectWithQRCode(
   instanceToken: string
 ): Promise<UazAPIResponse<InstanceStatus>> {
   console.log(`[UAZAPI] Conectando via QR Code`);
-  return makeRequest("/instance/connect", "POST", undefined, instanceToken);
+  const result = await makeRequest<InstanceStatus>("/instance/connect", "POST", undefined, instanceToken);
+  console.log(`[UAZAPI] Resposta connect QR:`, JSON.stringify(result, null, 2));
+  return result;
 }
 
 /**

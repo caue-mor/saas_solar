@@ -296,6 +296,9 @@ export async function POST(request: NextRequest) {
 
         const result = await connectInstance(token, connectionType, phone);
 
+        // Log detalhado da resposta da UAZAPI
+        console.log(`[API WhatsApp] Resposta UAZAPI connect:`, JSON.stringify(result, null, 2));
+
         if (!result.success) {
           // Se falhou e tinha token antigo, pode ser instância inválida
           // Tentar criar nova (igual ConectUazapi)
@@ -378,13 +381,28 @@ export async function POST(request: NextRequest) {
           .update(connectUpdates)
           .eq("id", Number(empresaId));
 
+        // Extrair QR Code de vários formatos possíveis da UAZAPI
+        const responseData = result.data as Record<string, unknown> | undefined;
+        const qrcode = responseData?.qrcode as string | undefined
+          || responseData?.qr as string | undefined
+          || responseData?.base64 as string | undefined
+          || responseData?.qrCodeUrl as string | undefined
+          || responseData?.code as string | undefined;
+
+        // Extrair PairCode de vários formatos possíveis
+        const paircode = responseData?.paircode as string | undefined
+          || responseData?.pairingCode as string | undefined;
+
+        console.log(`[API WhatsApp] QR Code extraído: ${qrcode ? 'SIM' : 'NÃO'}, PairCode: ${paircode ? 'SIM' : 'NÃO'}`);
+
         return NextResponse.json({
           success: true,
-          status: result.data?.status || "connecting",
-          qrcode: result.data?.qrcode,
-          paircode: result.data?.paircode,
+          status: responseData?.status as string || "connecting",
+          qrcode,
+          paircode,
           connectionType,
           new_instance_created: newInstanceCreated,
+          debug_response: process.env.NODE_ENV === "development" ? responseData : undefined,
         });
       }
 
