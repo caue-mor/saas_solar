@@ -27,6 +27,7 @@ import type {
   PropostaNodeData,
   VisitaTecnicaNodeData,
   FollowupNodeData,
+  ConditionNodeData,
   SOLAR_LEAD_FIELDS,
 } from '@/types/flow.types';
 
@@ -62,6 +63,29 @@ export function NodeEditorPanel({
     { value: 'forma_pagamento', label: 'Forma de Pagamento' },
     { value: 'cidade', label: 'Cidade' },
     { value: 'endereco', label: 'Endereço' },
+  ];
+
+  // Campos disponíveis para condições (inclui mais opções)
+  const camposCondicao = [
+    { value: 'consumo_kwh', label: 'Consumo (kWh)', tipo: 'numero' },
+    { value: 'valor_conta', label: 'Valor da Conta (R$)', tipo: 'numero' },
+    { value: 'tipo_instalacao', label: 'Tipo de Instalação', tipo: 'selecao', opcoes: ['RESIDENCIAL', 'COMERCIAL', 'RURAL', 'INVESTIMENTO'] },
+    { value: 'tipo_telhado', label: 'Tipo de Telhado', tipo: 'selecao', opcoes: ['ceramica', 'metalico', 'fibrocimento', 'laje', 'colonial'] },
+    { value: 'forma_pagamento', label: 'Forma de Pagamento', tipo: 'selecao', opcoes: ['financiamento', 'avista', 'definir'] },
+    { value: 'cidade', label: 'Cidade', tipo: 'texto' },
+    { value: 'nome', label: 'Nome', tipo: 'texto' },
+    { value: 'interesse_bateria', label: 'Interesse em Bateria', tipo: 'booleano' },
+    { value: 'area_disponivel', label: 'Área Disponível (m²)', tipo: 'numero' },
+  ];
+
+  // Operadores disponíveis para condições
+  const operadoresCondicao = [
+    { value: 'maior', label: 'Maior que (>)', tipos: ['numero'] },
+    { value: 'menor', label: 'Menor que (<)', tipos: ['numero'] },
+    { value: 'igual', label: 'Igual a (=)', tipos: ['numero', 'texto', 'selecao', 'booleano'] },
+    { value: 'diferente', label: 'Diferente de (≠)', tipos: ['numero', 'texto', 'selecao', 'booleano'] },
+    { value: 'contem', label: 'Contém', tipos: ['texto'] },
+    { value: 'existe', label: 'Existe (preenchido)', tipos: ['numero', 'texto', 'selecao', 'booleano'] },
   ];
 
   const renderGreetingEditor = () => {
@@ -574,6 +598,178 @@ export function NodeEditorPanel({
     );
   };
 
+  const renderConditionEditor = () => {
+    const data = node.data as ConditionNodeData;
+    const campoSelecionado = camposCondicao.find(c => c.value === data.campo);
+    const tipoCampo = campoSelecionado?.tipo || 'texto';
+
+    // Filtrar operadores baseado no tipo do campo
+    const operadoresDisponiveis = operadoresCondicao.filter(op =>
+      op.tipos.includes(tipoCampo)
+    );
+
+    return (
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="label">Nome do Nó</Label>
+          <Input
+            id="label"
+            value={data.label || ''}
+            onChange={(e) => updateField('label', e.target.value)}
+            placeholder="Ex: Verificar Consumo"
+          />
+        </div>
+
+        <Separator />
+
+        <div className="rounded-lg bg-orange-50 p-3 space-y-3">
+          <p className="text-xs font-medium text-orange-800">Configuração da Condição</p>
+
+          <div className="space-y-2">
+            <Label htmlFor="campo">Campo para Verificar</Label>
+            <Select
+              value={data.campo || 'consumo_kwh'}
+              onValueChange={(value) => {
+                updateField('campo' as any, value);
+                // Resetar operador se não for compatível
+                const novoCampo = camposCondicao.find(c => c.value === value);
+                const novoTipo = novoCampo?.tipo || 'texto';
+                const opAtual = operadoresCondicao.find(o => o.value === data.operador);
+                if (opAtual && !opAtual.tipos.includes(novoTipo)) {
+                  // Selecionar primeiro operador compatível
+                  const primeiroCompativel = operadoresCondicao.find(o => o.tipos.includes(novoTipo));
+                  if (primeiroCompativel) {
+                    updateField('operador' as any, primeiroCompativel.value);
+                  }
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um campo" />
+              </SelectTrigger>
+              <SelectContent>
+                {camposCondicao.map((campo) => (
+                  <SelectItem key={campo.value} value={campo.value}>
+                    {campo.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="operador">Operador</Label>
+            <Select
+              value={data.operador || 'maior'}
+              onValueChange={(value) => updateField('operador' as any, value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o operador" />
+              </SelectTrigger>
+              <SelectContent>
+                {operadoresDisponiveis.map((op) => (
+                  <SelectItem key={op.value} value={op.value}>
+                    {op.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Valor - varia conforme tipo do campo */}
+          {data.operador !== 'existe' && (
+            <div className="space-y-2">
+              <Label htmlFor="valor">Valor de Comparação</Label>
+
+              {tipoCampo === 'numero' && (
+                <Input
+                  id="valor"
+                  type="number"
+                  value={data.valor as number || ''}
+                  onChange={(e) => updateField('valor' as any, e.target.value ? parseFloat(e.target.value) : 0)}
+                  placeholder="Ex: 300"
+                />
+              )}
+
+              {tipoCampo === 'texto' && (
+                <Input
+                  id="valor"
+                  value={String(data.valor || '')}
+                  onChange={(e) => updateField('valor' as any, e.target.value)}
+                  placeholder="Ex: São Paulo"
+                />
+              )}
+
+              {tipoCampo === 'selecao' && campoSelecionado?.opcoes && (
+                <Select
+                  value={String(data.valor || '')}
+                  onValueChange={(value) => updateField('valor' as any, value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um valor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {campoSelecionado.opcoes.map((opcao) => (
+                      <SelectItem key={opcao} value={opcao}>
+                        {opcao}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {tipoCampo === 'booleano' && (
+                <Select
+                  value={String(data.valor || 'true')}
+                  onValueChange={(value) => updateField('valor' as any, value === 'true')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Sim</SelectItem>
+                    <SelectItem value="false">Não</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Preview da condição */}
+        <div className="rounded-lg bg-gray-50 p-3">
+          <p className="text-xs font-medium text-gray-600 mb-2">Preview da Condição:</p>
+          <p className="text-sm">
+            Se <span className="font-medium text-orange-600">{campoSelecionado?.label || data.campo}</span>
+            {' '}
+            <span className="font-mono bg-orange-100 px-1 rounded text-orange-800">
+              {operadoresCondicao.find(o => o.value === data.operador)?.label || data.operador}
+            </span>
+            {data.operador !== 'existe' && (
+              <span className="ml-1 font-medium">{String(data.valor)}</span>
+            )}
+          </p>
+          <div className="flex gap-4 mt-2 text-xs">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-green-500"></span>
+              Sim → próximo nó
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-red-500"></span>
+              Não → outro caminho
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Conecte as saídas "Sim" (verde) e "Não" (vermelho) aos nós apropriados.
+        </p>
+      </div>
+    );
+  };
+
   const renderDefaultEditor = () => {
     return (
       <div className="space-y-4">
@@ -606,6 +802,8 @@ export function NodeEditorPanel({
         return renderContaLuzEditor();
       case 'HANDOFF':
         return renderHandoffEditor();
+      case 'CONDITION':
+        return renderConditionEditor();
       default:
         return renderDefaultEditor();
     }
