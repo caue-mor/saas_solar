@@ -15,6 +15,16 @@ const publicPrefixes = [
   "/_next",
   "/favicon",
   "/images",
+  "/icons",
+];
+
+// Arquivos estáticos que devem ser públicos
+const staticFiles = [
+  "/site.webmanifest",
+  "/favicon.svg",
+  "/favicon.ico",
+  "/robots.txt",
+  "/sitemap.xml",
 ];
 
 // Cookie de autenticação
@@ -28,9 +38,10 @@ export function middleware(request: NextRequest) {
   const isPublicPrefix = publicPrefixes.some((prefix) =>
     pathname.startsWith(prefix)
   );
+  const isStaticFile = staticFiles.includes(pathname);
 
-  // Permitir rotas públicas
-  if (isPublicRoute || isPublicPrefix) {
+  // Permitir rotas públicas e arquivos estáticos
+  if (isPublicRoute || isPublicPrefix || isStaticFile) {
     return NextResponse.next();
   }
 
