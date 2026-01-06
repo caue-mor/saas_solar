@@ -48,12 +48,15 @@ export interface Instance {
 }
 
 export interface InstanceStatus {
-  status: ConnectionStatus;
-  qrcode?: string;
-  paircode?: string;
-  instance?: Instance;
+  // Campos da raiz da resposta /instance/connect
   connected?: boolean;
   loggedIn?: boolean;
+  jid?: object | null;
+  instance?: Instance;
+  // Campos que podem vir na raiz (fallback)
+  status?: ConnectionStatus;
+  qrcode?: string;
+  paircode?: string;
   owner?: string;
   profileName?: string;
   profilePicUrl?: string;
