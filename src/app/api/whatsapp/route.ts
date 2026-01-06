@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (Object.keys(updates).length > 0) {
-        updates.last_update = new Date().toISOString();
+        updates.updated_at = new Date().toISOString();
         await supabase
           .from("acessos_fotovoltaico")
           .update(updates)
@@ -676,7 +676,7 @@ export async function POST(request: NextRequest) {
           uazapi_instancia: (instanceInfo as Record<string, unknown>)?.id as string || instanceToken,
           webhook_url: AGENT_WEBHOOK_URL,
           whatsapp_status: apiStatus,
-          last_update: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         };
 
         if (owner) {
@@ -759,7 +759,7 @@ export async function POST(request: NextRequest) {
         // Atualizar banco
         const updates: Record<string, unknown> = {
           whatsapp_status: apiStatus,
-          last_update: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         };
 
         if (webhookUpdated) {
