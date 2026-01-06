@@ -267,7 +267,8 @@ export async function createInstanceWithWebhook(
  * Requer admintoken
  */
 export async function listInstances(): Promise<UazAPIResponse<Instance[]>> {
-  return makeRequest("/instance/list");
+  console.log(`[UAZAPI] Listando todas as instâncias`);
+  return makeRequest("/instance/all");
 }
 
 /**
@@ -275,6 +276,7 @@ export async function listInstances(): Promise<UazAPIResponse<Instance[]>> {
  */
 export async function getAllInstances(): Promise<Instance[]> {
   const result = await listInstances();
+  console.log(`[UAZAPI] Total de instâncias encontradas: ${result.success ? (result.data?.length || 0) : 0}`);
   if (result.success && result.data) {
     return Array.isArray(result.data) ? result.data : [];
   }
@@ -288,10 +290,13 @@ export async function findInstanceByPhone(phoneNumber: string): Promise<Instance
   const instances = await getAllInstances();
   const formattedPhone = formatPhone(phoneNumber);
 
-  return instances.find(
+  const found = instances.find(
     (instance) => instance.owner === formattedPhone ||
                   instance.owner === `${formattedPhone}@s.whatsapp.net`
   ) || null;
+
+  console.log(`[UAZAPI] Busca por telefone ${formattedPhone}: ${found ? 'encontrada' : 'não encontrada'}`);
+  return found;
 }
 
 /**
@@ -300,20 +305,97 @@ export async function findInstanceByPhone(phoneNumber: string): Promise<Instance
 export async function findInstanceByEmail(email: string): Promise<Instance | null> {
   const instances = await getAllInstances();
 
-  return instances.find(
+  const found = instances.find(
     (instance) => instance.adminField01 === email
   ) || null;
+
+  console.log(`[UAZAPI] Busca por email ${email}: ${found ? 'encontrada' : 'não encontrada'}`);
+  return found;
 }
 
 /**
- * Deletar instância
- * Requer admintoken
+ * Buscar instância por nome (ex: "solar-{slug}")
+ */
+export async function findInstanceByName(name: string): Promise<Instance | null> {
+  const instances = await getAllInstances();
+
+  const found = instances.find(
+    (instance) => instance.name === name || instance.name?.startsWith(name)
+  ) || null;
+
+  console.log(`[UAZAPI] Busca por nome ${name}: ${found ? 'encontrada' : 'não encontrada'}`);
+  return found;
+}
+
+/**
+ * Buscar todas as instâncias de uma empresa (por email ou nome)
+ */
+export async function findInstancesForCompany(email: string, namePrefix: string): Promise<Instance[]> {
+  const instances = await getAllInstances();
+
+  const found = instances.filter(
+    (instance) =>
+      instance.adminField01 === email ||
+      instance.name?.startsWith(namePrefix)
+  );
+
+  console.log(`[UAZAPI] Instâncias encontradas para empresa: ${found.length}`);
+  return found;
+}
+
+/**
+ * Deletar instância pelo token
+ * Requer token da instância
  */
 export async function deleteInstance(
-  instanceId: string
+  instanceToken: string
 ): Promise<UazAPIResponse> {
-  console.log(`[UAZAPI] Deletando instância: ${instanceId}`);
-  return makeRequest(`/instance/delete/${instanceId}`, "DELETE");
+  console.log(`[UAZAPI] Deletando instância`);
+  return makeRequest("/instance", "DELETE", undefined, instanceToken);
+}
+
+/**
+ * Deletar instâncias duplicadas, mantendo apenas a melhor (conectada ou mais recente)
+ */
+export async function cleanupDuplicateInstances(
+  instances: Instance[]
+): Promise<{ kept: Instance | null; deleted: string[] }> {
+  if (instances.length <= 1) {
+    return { kept: instances[0] || null, deleted: [] };
+  }
+
+  // Ordenar: conectadas primeiro, depois por data de atualização
+  const sorted = [...instances].sort((a, b) => {
+    // Conectada tem prioridade
+    if (a.status === "connected" && b.status !== "connected") return -1;
+    if (b.status === "connected" && a.status !== "connected") return 1;
+
+    // Depois por data de atualização (mais recente primeiro)
+    const dateA = a.updated ? new Date(a.updated).getTime() : 0;
+    const dateB = b.updated ? new Date(b.updated).getTime() : 0;
+    return dateB - dateA;
+  });
+
+  const kept = sorted[0];
+  const toDelete = sorted.slice(1);
+  const deleted: string[] = [];
+
+  console.log(`[UAZAPI] Mantendo instância: ${kept.name} (${kept.status})`);
+  console.log(`[UAZAPI] Deletando ${toDelete.length} instâncias duplicadas`);
+
+  for (const instance of toDelete) {
+    if (instance.token) {
+      const result = await deleteInstance(instance.token);
+      if (result.success) {
+        deleted.push(instance.id);
+        console.log(`[UAZAPI] Deletada: ${instance.name} (${instance.id})`);
+      } else {
+        console.error(`[UAZAPI] Erro ao deletar ${instance.name}: ${result.error}`);
+      }
+    }
+  }
+
+  return { kept, deleted };
 }
 
 // ============================================

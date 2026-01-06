@@ -8,7 +8,10 @@ import {
   sendTextMessage,
   formatPhone,
   validateBrazilianPhone,
+  findInstancesForCompany,
+  cleanupDuplicateInstances,
   type ConnectionStatus,
+  type Instance,
 } from "@/lib/uazapi";
 import { supabase } from "@/lib/supabase";
 
@@ -224,13 +227,18 @@ export async function POST(request: NextRequest) {
 
       // ==========================================
       // CONECTAR (QR CODE OU PAIRCODE)
-      // Cria instância automaticamente se não existir
+      // CRUD Inteligente: Busca, reutiliza, cria, limpa duplicatas
       // ==========================================
       case "connect": {
         const connectionType = params.type || "qrcode";
         const phone = params.phone;
-        let token = empresa.token_whatsapp;
-        let newInstanceCreated = false;
+        const instanceNamePrefix = `solar-${empresa.slug || empresa.id}`;
+
+        console.log(`[API WhatsApp] ========== INICIANDO CONEXÃO ==========`);
+        console.log(`[API WhatsApp] Empresa: ${empresa.nome_empresa} (ID: ${empresaId})`);
+        console.log(`[API WhatsApp] Email: ${empresa.email}`);
+        console.log(`[API WhatsApp] Tipo: ${connectionType}`);
+        console.log(`[API WhatsApp] Token no Supabase: ${empresa.token_whatsapp ? 'SIM' : 'NÃO'}`);
 
         // Validar telefone se for paircode
         if (connectionType === "paircode") {
@@ -248,12 +256,111 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Se não tem token, criar instância primeiro (igual ConectUazapi)
-        if (!token) {
-          console.log(`[API WhatsApp] Sem instância, criando automaticamente...`);
+        let token: string | null = null;
+        let instanceId: string | null = null;
+        let reusingExisting = false;
+        let cleanedDuplicates: string[] = [];
 
-          const instanceName = `solar-${empresa.slug || empresa.id}`;
-          const createResult = await createInstance(instanceName, {
+        // ========================================
+        // PASSO 1: Verificar se tem token no Supabase e se é válido
+        // ========================================
+        if (empresa.token_whatsapp) {
+          console.log(`[API WhatsApp] Verificando token existente no Supabase...`);
+          const statusCheck = await getInstanceStatus(empresa.token_whatsapp);
+
+          if (statusCheck.success) {
+            console.log(`[API WhatsApp] Token válido! Status: ${statusCheck.data?.status || statusCheck.data?.instance?.status}`);
+            token = empresa.token_whatsapp;
+            instanceId = empresa.uazapi_instancia || null;
+            reusingExisting = true;
+
+            // Se já está conectado, retornar status
+            const currentStatus = statusCheck.data?.status || (statusCheck.data?.instance as unknown as Record<string, unknown>)?.status;
+            if (currentStatus === "connected") {
+              console.log(`[API WhatsApp] Instância já conectada!`);
+              return NextResponse.json({
+                success: true,
+                status: "connected",
+                message: "WhatsApp já está conectado",
+                reusingExisting: true,
+              });
+            }
+          } else {
+            console.log(`[API WhatsApp] Token inválido ou instância não existe mais`);
+            // Token inválido, limpar do banco
+            await supabase
+              .from("acessos_fotovoltaico")
+              .update({
+                token_whatsapp: null,
+                uazapi_instancia: null,
+                whatsapp_status: "not_created",
+                last_update: new Date().toISOString(),
+              })
+              .eq("id", Number(empresaId));
+          }
+        }
+
+        // ========================================
+        // PASSO 2: Se não tem token válido, buscar na UAZAPI por instâncias existentes
+        // ========================================
+        if (!token) {
+          console.log(`[API WhatsApp] Buscando instâncias existentes na UAZAPI...`);
+          const existingInstances = await findInstancesForCompany(
+            empresa.email || "",
+            instanceNamePrefix
+          );
+
+          if (existingInstances.length > 0) {
+            console.log(`[API WhatsApp] Encontradas ${existingInstances.length} instância(s) para esta empresa`);
+
+            // Se tem múltiplas, limpar duplicatas
+            if (existingInstances.length > 1) {
+              console.log(`[API WhatsApp] Limpando ${existingInstances.length - 1} instância(s) duplicada(s)...`);
+              const cleanup = await cleanupDuplicateInstances(existingInstances);
+              cleanedDuplicates = cleanup.deleted;
+
+              if (cleanup.kept) {
+                token = cleanup.kept.token;
+                instanceId = cleanup.kept.id;
+                reusingExisting = true;
+                console.log(`[API WhatsApp] Mantendo instância: ${cleanup.kept.name} (${cleanup.kept.status})`);
+              }
+            } else {
+              // Apenas uma instância
+              const existing = existingInstances[0];
+              token = existing.token;
+              instanceId = existing.id;
+              reusingExisting = true;
+              console.log(`[API WhatsApp] Reutilizando instância existente: ${existing.name} (${existing.status})`);
+            }
+
+            // Atualizar Supabase com o token encontrado
+            if (token) {
+              const { error: updateTokenError } = await supabase
+                .from("acessos_fotovoltaico")
+                .update({
+                  token_whatsapp: token,
+                  uazapi_instancia: instanceId,
+                  last_update: new Date().toISOString(),
+                })
+                .eq("id", Number(empresaId));
+
+              if (updateTokenError) {
+                console.error(`[API WhatsApp] Erro ao atualizar token no Supabase:`, updateTokenError);
+              } else {
+                console.log(`[API WhatsApp] Token atualizado no Supabase`);
+              }
+            }
+          }
+        }
+
+        // ========================================
+        // PASSO 3: Se ainda não tem token, criar nova instância
+        // ========================================
+        if (!token) {
+          console.log(`[API WhatsApp] Nenhuma instância encontrada, criando nova...`);
+
+          const createResult = await createInstance(instanceNamePrefix, {
             adminField01: empresa.email || String(empresaId),
             webhookUrl: AGENT_WEBHOOK_URL,
             webhookEvents: [
@@ -273,17 +380,17 @@ export async function POST(request: NextRequest) {
             );
           }
 
-          token = createResult.data?.token;
-          newInstanceCreated = true;
+          token = createResult.data?.token || null;
+          instanceId = createResult.data?.instance?.id || null;
 
-          console.log(`[API WhatsApp] Token da nova instância: ${token}`);
+          console.log(`[API WhatsApp] Nova instância criada! Token: ${token?.substring(0, 8)}...`);
 
-          // Salvar token no banco com verificação de erro
+          // Salvar no Supabase
           const { error: saveError } = await supabase
             .from("acessos_fotovoltaico")
             .update({
               token_whatsapp: token,
-              uazapi_instancia: createResult.data?.instance?.id || token,
+              uazapi_instancia: instanceId,
               webhook_url: AGENT_WEBHOOK_URL,
               whatsapp_status: "disconnected",
               last_update: new Date().toISOString(),
@@ -291,104 +398,43 @@ export async function POST(request: NextRequest) {
             .eq("id", Number(empresaId));
 
           if (saveError) {
-            console.error(`[API WhatsApp] Erro ao salvar token no Supabase:`, saveError);
+            console.error(`[API WhatsApp] Erro ao salvar no Supabase:`, saveError);
           } else {
-            console.log(`[API WhatsApp] Token salvo no Supabase com sucesso`);
+            console.log(`[API WhatsApp] Dados salvos no Supabase com sucesso`);
           }
-
-          // Configurar webhook explicitamente (garantia extra)
-          console.log(`[API WhatsApp] Configurando webhook: ${AGENT_WEBHOOK_URL}`);
-          const webhookResult = await setWebhook(token, {
-            url: AGENT_WEBHOOK_URL,
-            enabled: true,
-            events: [
-              "messages",
-              "messages.upsert",
-              "messages.update",
-              "connection.update",
-              "qrcode.updated",
-            ],
-          });
-
-          if (webhookResult.success) {
-            console.log(`[API WhatsApp] Webhook configurado com sucesso`);
-          } else {
-            console.error(`[API WhatsApp] Erro ao configurar webhook:`, webhookResult.error);
-          }
-
-          console.log(`[API WhatsApp] Instância criada: ${instanceName}`);
         }
 
-        // Agora conectar
-        console.log(`[API WhatsApp] Conectando via ${connectionType}${phone ? ` - ${phone}` : ""}`);
+        // ========================================
+        // PASSO 4: Configurar webhook (garantia)
+        // ========================================
+        console.log(`[API WhatsApp] Configurando webhook: ${AGENT_WEBHOOK_URL}`);
+        const webhookResult = await setWebhook(token!, {
+          url: AGENT_WEBHOOK_URL,
+          enabled: true,
+          events: [
+            "messages",
+            "messages.upsert",
+            "messages.update",
+            "connection.update",
+            "qrcode.updated",
+          ],
+        });
 
-        const result = await connectInstance(token, connectionType, phone);
+        if (webhookResult.success) {
+          console.log(`[API WhatsApp] Webhook configurado com sucesso`);
+        } else {
+          console.error(`[API WhatsApp] Erro ao configurar webhook:`, webhookResult.error);
+        }
 
-        // Log detalhado da resposta da UAZAPI
+        // ========================================
+        // PASSO 5: Conectar (gerar QR Code ou PairCode)
+        // ========================================
+        console.log(`[API WhatsApp] Conectando via ${connectionType}...`);
+        const result = await connectInstance(token!, connectionType, phone);
+
         console.log(`[API WhatsApp] Resposta UAZAPI connect:`, JSON.stringify(result, null, 2));
 
         if (!result.success) {
-          // Se falhou e tinha token antigo, pode ser instância inválida
-          // Tentar criar nova (igual ConectUazapi)
-          if (!newInstanceCreated && empresa.token_whatsapp) {
-            console.log(`[API WhatsApp] Falha ao conectar, criando nova instância...`);
-
-            const instanceName = `solar-${empresa.slug || empresa.id}-${Date.now()}`;
-            const createResult = await createInstance(instanceName, {
-              adminField01: empresa.email || String(empresaId),
-              webhookUrl: AGENT_WEBHOOK_URL,
-              webhookEvents: ["messages", "messages.upsert", "connection.update"],
-            });
-
-            if (createResult.success) {
-              token = createResult.data?.token;
-
-              await supabase
-                .from("acessos_fotovoltaico")
-                .update({
-                  token_whatsapp: token,
-                  uazapi_instancia: createResult.data?.instance?.id || token,
-                  webhook_url: AGENT_WEBHOOK_URL,
-                  last_update: new Date().toISOString(),
-                })
-                .eq("id", Number(empresaId));
-
-              // Tentar conectar com nova instância
-              const retryResult = await connectInstance(token, connectionType, phone);
-
-              if (retryResult.success) {
-                // Salvar status E número (igual ConectUazapi)
-                const retryUpdates: Record<string, unknown> = {
-                  whatsapp_status: "connecting",
-                  last_update: new Date().toISOString(),
-                };
-
-                if (phone) {
-                  retryUpdates.whatsapp_numero = phone;
-                  retryUpdates.numero_atendimento = phone;
-                }
-
-                await supabase
-                  .from("acessos_fotovoltaico")
-                  .update(retryUpdates)
-                  .eq("id", Number(empresaId));
-
-                // Extrair QR Code da resposta (está em instance.qrcode)
-                const retryData = retryResult.data as Record<string, unknown> | undefined;
-                const retryInstance = retryData?.instance as Record<string, unknown> | undefined;
-
-                return NextResponse.json({
-                  success: true,
-                  status: "connecting",
-                  qrcode: retryInstance?.qrcode || retryData?.qrcode,
-                  paircode: retryInstance?.paircode || retryData?.paircode,
-                  connectionType,
-                  new_instance_created: true,
-                });
-              }
-            }
-          }
-
           console.error(`[API WhatsApp] Erro ao conectar:`, result.error);
           return NextResponse.json(
             { error: result.error || "Erro ao conectar na UAZAPI" },
@@ -396,54 +442,47 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Atualizar status E número (se fornecido via paircode)
-        const connectUpdates: Record<string, unknown> = {
+        // ========================================
+        // PASSO 6: Atualizar Supabase com status e dados
+        // ========================================
+        const finalUpdates: Record<string, unknown> = {
+          token_whatsapp: token,
+          uazapi_instancia: instanceId,
+          webhook_url: AGENT_WEBHOOK_URL,
           whatsapp_status: "connecting",
           last_update: new Date().toISOString(),
         };
 
-        // Se nova instância foi criada, garantir que o token está salvo
-        if (newInstanceCreated && token) {
-          connectUpdates.token_whatsapp = token;
-          connectUpdates.webhook_url = AGENT_WEBHOOK_URL;
-        }
-
-        // Salvar número imediatamente (igual ConectUazapi)
         if (phone) {
-          connectUpdates.whatsapp_numero = phone;
-          connectUpdates.numero_atendimento = phone;
+          finalUpdates.whatsapp_numero = phone;
+          finalUpdates.numero_atendimento = phone;
         }
 
-        console.log(`[API WhatsApp] Atualizando Supabase:`, JSON.stringify(connectUpdates));
-
-        const { error: updateError } = await supabase
+        const { error: finalUpdateError } = await supabase
           .from("acessos_fotovoltaico")
-          .update(connectUpdates)
+          .update(finalUpdates)
           .eq("id", Number(empresaId));
 
-        if (updateError) {
-          console.error(`[API WhatsApp] Erro ao atualizar Supabase:`, updateError);
+        if (finalUpdateError) {
+          console.error(`[API WhatsApp] Erro ao atualizar Supabase final:`, finalUpdateError);
         } else {
           console.log(`[API WhatsApp] Supabase atualizado com sucesso`);
         }
 
-        // Extrair QR Code da resposta UAZAPI
-        // A resposta vem no formato: { connected, loggedIn, jid, instance: { qrcode, paircode, ... } }
+        // ========================================
+        // PASSO 7: Extrair QR Code da resposta
+        // ========================================
         const responseData = result.data as Record<string, unknown> | undefined;
         const instanceData = responseData?.instance as Record<string, unknown> | undefined;
 
-        // QR Code pode estar em instance.qrcode ou diretamente na raiz
         const qrcode = instanceData?.qrcode as string | undefined
           || responseData?.qrcode as string | undefined;
 
-        // PairCode pode estar em instance.paircode ou diretamente na raiz
         const paircode = instanceData?.paircode as string | undefined
           || responseData?.paircode as string | undefined;
 
-        console.log(`[API WhatsApp] Instance data:`, instanceData ? 'presente' : 'ausente');
-        console.log(`[API WhatsApp] Campos da instance:`, instanceData ? Object.keys(instanceData) : 'N/A');
-
-        console.log(`[API WhatsApp] QR Code extraído: ${qrcode ? 'SIM' : 'NÃO'}, PairCode: ${paircode ? 'SIM' : 'NÃO'}`);
+        console.log(`[API WhatsApp] QR Code: ${qrcode ? 'SIM' : 'NÃO'}, PairCode: ${paircode ? 'SIM' : 'NÃO'}`);
+        console.log(`[API WhatsApp] ========== CONEXÃO FINALIZADA ==========`);
 
         return NextResponse.json({
           success: true,
@@ -451,8 +490,9 @@ export async function POST(request: NextRequest) {
           qrcode,
           paircode,
           connectionType,
-          new_instance_created: newInstanceCreated,
-          debug_response: process.env.NODE_ENV === "development" ? responseData : undefined,
+          reusingExisting,
+          cleanedDuplicates: cleanedDuplicates.length > 0 ? cleanedDuplicates : undefined,
+          token: process.env.NODE_ENV === "development" ? token : undefined,
         });
       }
 
