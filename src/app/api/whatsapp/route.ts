@@ -205,7 +205,6 @@ export async function POST(request: NextRequest) {
             uazapi_instancia: result.data?.instance?.id || result.data?.token,
             whatsapp_status: "disconnected",
             webhook_url: webhookUrl,
-            last_update: new Date().toISOString(),
           })
           .eq("id", Number(empresaId));
 
@@ -288,8 +287,7 @@ export async function POST(request: NextRequest) {
                 token_whatsapp: null,
                 uazapi_instancia: null,
                 whatsapp_status: "not_created",
-                last_update: new Date().toISOString(),
-              })
+                  })
               .eq("id", Number(empresaId));
           }
         }
@@ -335,8 +333,7 @@ export async function POST(request: NextRequest) {
                 .update({
                   token_whatsapp: token,
                   uazapi_instancia: instanceId,
-                  last_update: new Date().toISOString(),
-                })
+                      })
                 .eq("id", Number(empresaId));
 
               if (updateTokenError) {
@@ -381,8 +378,7 @@ export async function POST(request: NextRequest) {
               uazapi_instancia: instanceId,
               webhook_url: AGENT_WEBHOOK_URL,
               whatsapp_status: "disconnected",
-              last_update: new Date().toISOString(),
-            })
+              })
             .eq("id", Number(empresaId));
 
           if (saveError) {
@@ -423,8 +419,6 @@ export async function POST(request: NextRequest) {
           whatsapp_status: "connected",
           status_plano: "ativo",
           produto_plano: "IA ATENDIMENTO",
-          // Timestamp
-          last_update: new Date().toISOString(),
         };
 
         // Número do WhatsApp
@@ -433,18 +427,27 @@ export async function POST(request: NextRequest) {
           allDataUpdates.numero_atendimento = phone;
         }
 
-        console.log(`[API WhatsApp] Salvando TODOS os dados no Supabase:`, JSON.stringify(allDataUpdates, null, 2));
+        console.log(`[API WhatsApp] ============ SALVANDO NO SUPABASE ============`);
+        console.log(`[API WhatsApp] EmpresaId: ${empresaId}`);
+        console.log(`[API WhatsApp] Updates:`, JSON.stringify(allDataUpdates, null, 2));
 
-        const { error: saveAllError, data: savedData } = await supabase
-          .from("acessos_fotovoltaico")
-          .update(allDataUpdates)
-          .eq("id", Number(empresaId))
-          .select();
+        let supabaseSaveSuccess = false;
+        try {
+          const { error: saveErr, data: savedData } = await supabase
+            .from("acessos_fotovoltaico")
+            .update(allDataUpdates)
+            .eq("id", Number(empresaId))
+            .select();
 
-        if (saveAllError) {
-          console.error(`[API WhatsApp] ERRO ao salvar no Supabase:`, saveAllError);
-        } else {
-          console.log(`[API WhatsApp] Dados salvos com sucesso!`, savedData);
+          if (saveErr) {
+            console.error(`[API WhatsApp] ❌ ERRO Supabase:`, JSON.stringify(saveErr, null, 2));
+          } else {
+            supabaseSaveSuccess = true;
+            console.log(`[API WhatsApp] ✅ Dados salvos com sucesso!`);
+            console.log(`[API WhatsApp] Resultado:`, JSON.stringify(savedData, null, 2));
+          }
+        } catch (supabaseErr) {
+          console.error(`[API WhatsApp] ❌ EXCEÇÃO Supabase:`, supabaseErr);
         }
 
         // ========================================
@@ -486,7 +489,7 @@ export async function POST(request: NextRequest) {
           connectionType,
           reusingExisting,
           cleanedDuplicates: cleanedDuplicates.length > 0 ? cleanedDuplicates : undefined,
-          savedToDatabase: !saveAllError, // Indicar se salvou no banco
+          savedToDatabase: supabaseSaveSuccess,
           token: process.env.NODE_ENV === "development" ? token : undefined,
         });
       }
@@ -521,7 +524,6 @@ export async function POST(request: NextRequest) {
             whatsapp_status: "disconnected",
             whatsapp_numero: null,
             numero_atendimento: null,
-            last_update: new Date().toISOString(),
           })
           .eq("id", Number(empresaId));
 
@@ -567,7 +569,6 @@ export async function POST(request: NextRequest) {
           .from("acessos_fotovoltaico")
           .update({
             webhook_url: webhookUrl,
-            last_update: new Date().toISOString(),
           })
           .eq("id", Number(empresaId));
 
