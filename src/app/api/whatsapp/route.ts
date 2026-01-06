@@ -79,7 +79,8 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      const apiStatus = result.data?.status || "disconnected";
+      // Extrair status - pode estar na raiz ou dentro de instance
+      const apiStatus = result.data?.status || result.data?.instance?.status || "disconnected";
       const owner = result.data?.owner || result.data?.instance?.owner;
 
       // Sincronizar dados com o banco se mudou

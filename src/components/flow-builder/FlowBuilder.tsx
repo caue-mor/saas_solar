@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState, useRef, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -62,7 +62,13 @@ function FlowBuilderInner({
   const [saving, setSaving] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<SolarFlowNode | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Busca o nó selecionado atual no array de nodes (sempre sincronizado)
+  const selectedNode = useMemo(() => {
+    if (!selectedNodeId) return null;
+    return nodes.find((n) => n.id === selectedNodeId) as SolarFlowNode | null;
+  }, [nodes, selectedNodeId]);
 
   // ID counter para novos nós
   const nodeIdCounter = useRef(
@@ -213,18 +219,18 @@ function FlowBuilderInner({
         )
       );
       // Limpa seleção se o nó deletado estava selecionado
-      if (deleted.some((n) => n.id === selectedNode?.id)) {
-        setSelectedNode(null);
+      if (deleted.some((n) => n.id === selectedNodeId)) {
+        setSelectedNodeId(null);
       }
       setHasChanges(true);
     },
-    [setEdges, selectedNode]
+    [setEdges, selectedNodeId]
   );
 
   // Clique em nó - abre painel de edição
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      setSelectedNode(node as SolarFlowNode);
+      setSelectedNodeId(node.id);
       setShowConfig(false); // Fecha config global ao selecionar nó
     },
     []
@@ -232,7 +238,7 @@ function FlowBuilderInner({
 
   // Clique no canvas - fecha painel de edição
   const onPaneClick = useCallback(() => {
-    setSelectedNode(null);
+    setSelectedNodeId(null);
   }, []);
 
   // Deletar nó específico
@@ -242,7 +248,7 @@ function FlowBuilderInner({
       setEdges((eds) =>
         eds.filter((e) => e.source !== nodeId && e.target !== nodeId)
       );
-      setSelectedNode(null);
+      setSelectedNodeId(null);
       setHasChanges(true);
     },
     [setNodes, setEdges]
@@ -378,7 +384,7 @@ function FlowBuilderInner({
           node={selectedNode}
           onUpdate={updateNodeData}
           onDelete={deleteNode}
-          onClose={() => setSelectedNode(null)}
+          onClose={() => setSelectedNodeId(null)}
         />
       )}
     </div>
