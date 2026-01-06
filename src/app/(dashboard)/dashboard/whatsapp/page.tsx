@@ -392,7 +392,7 @@ export default function WhatsAppPage() {
 
   // Badge de status
   const renderStatusBadge = () => {
-    const statusConfig: Record<ConnectionStatus, { label: string; className: string }> = {
+    const statusConfig: Record<string, { label: string; className: string }> = {
       not_created: { label: "Nao Criado", className: "bg-gray-500" },
       disconnected: { label: "Offline", className: "bg-red-500" },
       connecting: { label: "Conectando...", className: "bg-yellow-500" },
@@ -400,7 +400,8 @@ export default function WhatsAppPage() {
       error: { label: "Erro", className: "bg-red-500" },
     };
 
-    const config = statusConfig[status?.status || "error"];
+    const currentStatus = status?.status || "error";
+    const config = statusConfig[currentStatus] || statusConfig["error"];
     return <Badge className={config.className}>{config.label}</Badge>;
   };
 
