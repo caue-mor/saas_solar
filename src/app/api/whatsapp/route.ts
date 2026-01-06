@@ -345,11 +345,15 @@ export async function POST(request: NextRequest) {
                   .update(retryUpdates)
                   .eq("id", Number(empresaId));
 
+                // Extrair QR Code da resposta (está em instance.qrcode)
+                const retryData = retryResult.data as Record<string, unknown> | undefined;
+                const retryInstance = retryData?.instance as Record<string, unknown> | undefined;
+
                 return NextResponse.json({
                   success: true,
                   status: "connecting",
-                  qrcode: retryResult.data?.qrcode,
-                  paircode: retryResult.data?.paircode,
+                  qrcode: retryInstance?.qrcode || retryData?.qrcode,
+                  paircode: retryInstance?.paircode || retryData?.paircode,
                   connectionType,
                   new_instance_created: true,
                 });
@@ -381,17 +385,21 @@ export async function POST(request: NextRequest) {
           .update(connectUpdates)
           .eq("id", Number(empresaId));
 
-        // Extrair QR Code de vários formatos possíveis da UAZAPI
+        // Extrair QR Code da resposta UAZAPI
+        // A resposta vem no formato: { connected, loggedIn, jid, instance: { qrcode, paircode, ... } }
         const responseData = result.data as Record<string, unknown> | undefined;
-        const qrcode = responseData?.qrcode as string | undefined
-          || responseData?.qr as string | undefined
-          || responseData?.base64 as string | undefined
-          || responseData?.qrCodeUrl as string | undefined
-          || responseData?.code as string | undefined;
+        const instanceData = responseData?.instance as Record<string, unknown> | undefined;
 
-        // Extrair PairCode de vários formatos possíveis
-        const paircode = responseData?.paircode as string | undefined
-          || responseData?.pairingCode as string | undefined;
+        // QR Code pode estar em instance.qrcode ou diretamente na raiz
+        const qrcode = instanceData?.qrcode as string | undefined
+          || responseData?.qrcode as string | undefined;
+
+        // PairCode pode estar em instance.paircode ou diretamente na raiz
+        const paircode = instanceData?.paircode as string | undefined
+          || responseData?.paircode as string | undefined;
+
+        console.log(`[API WhatsApp] Instance data:`, instanceData ? 'presente' : 'ausente');
+        console.log(`[API WhatsApp] Campos da instance:`, instanceData ? Object.keys(instanceData) : 'N/A');
 
         console.log(`[API WhatsApp] QR Code extraído: ${qrcode ? 'SIM' : 'NÃO'}, PairCode: ${paircode ? 'SIM' : 'NÃO'}`);
 
