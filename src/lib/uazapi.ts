@@ -456,13 +456,13 @@ export async function getInstanceStatus(
 }
 
 /**
- * Desconectar instância (logout)
+ * Desconectar instância
  */
 export async function disconnectInstance(
   instanceToken: string
 ): Promise<UazAPIResponse> {
   console.log(`[UAZAPI] Desconectando instância`);
-  return makeRequest("/instance/logout", "POST", undefined, instanceToken);
+  return makeRequest("/instance/disconnect", "POST", undefined, instanceToken);
 }
 
 /**
