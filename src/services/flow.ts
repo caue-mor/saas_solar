@@ -7,8 +7,14 @@ function getSupabaseClient(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+  console.log("[Flow Service] Verificando env vars:", {
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseServiceKey,
+    keyPrefix: supabaseServiceKey?.substring(0, 20) + "...",
+  });
+
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.error("[Flow Service] Variáveis de ambiente não configuradas:", {
+    console.error("[Flow Service] ERRO: Variáveis de ambiente não configuradas:", {
       hasUrl: !!supabaseUrl,
       hasKey: !!supabaseServiceKey,
     });
@@ -89,7 +95,10 @@ export async function saveFlow(flow: CompanyFlow): Promise<FlowResponse> {
     const supabase = getSupabaseClient();
     const { empresaId, ...flowData } = flow;
 
-    console.log("[Flow Service] Salvando fluxo para empresa:", empresaId);
+    console.log("[Flow Service] ========== INICIANDO SAVE ==========");
+    console.log("[Flow Service] empresaId:", empresaId, "tipo:", typeof empresaId);
+    const firstMsg = (flow.nodes?.[0]?.data as any)?.mensagem;
+    console.log("[Flow Service] Primeiro nó mensagem:", typeof firstMsg === 'string' ? firstMsg.substring(0, 50) : firstMsg);
 
     // Incrementa versão
     const novaVersao = (flow.versao || 0) + 1;
@@ -106,6 +115,11 @@ export async function saveFlow(flow: CompanyFlow): Promise<FlowResponse> {
       edgesCount: flowData.edges?.length || 0,
     });
 
+    console.log("[Flow Service] Executando UPDATE no Supabase...");
+    console.log("[Flow Service] flowToSave nodes count:", flowToSave.nodes?.length);
+    const toSaveMsg = (flowToSave as any).nodes?.[0]?.data?.mensagem;
+    console.log("[Flow Service] flowToSave primeira mensagem:", typeof toSaveMsg === 'string' ? toSaveMsg.substring(0, 50) : toSaveMsg);
+
     const { data, error } = await supabase
       .from("acessos_fotovoltaico")
       .update({
@@ -116,17 +130,29 @@ export async function saveFlow(flow: CompanyFlow): Promise<FlowResponse> {
       .select("id, flow_config")
       .single();
 
+    console.log("[Flow Service] Resultado do UPDATE:");
+    console.log("[Flow Service] - error:", error);
+    console.log("[Flow Service] - data:", data ? `id=${data.id}` : "NULL");
+
     if (error) {
-      console.error("[Flow Service] Erro ao salvar fluxo:", error);
+      console.error("[Flow Service] ERRO ao salvar fluxo:", error);
       return { success: false, error: error.message };
     }
 
     if (!data) {
-      console.error("[Flow Service] Nenhum dado retornado após update - empresa não existe?");
+      console.error("[Flow Service] ERRO: Nenhum dado retornado após update - empresa não existe?");
       return { success: false, error: "Empresa não encontrada ou sem permissão" };
     }
 
-    console.log("[Flow Service] Fluxo salvo com sucesso:", data.id);
+    // Verificar se o dado foi realmente salvo
+    const savedConfig = data.flow_config as any;
+    const savedMsg = savedConfig?.nodes?.[0]?.data?.mensagem;
+    console.log("[Flow Service] SUCESSO! Dados salvos:");
+    console.log("[Flow Service] - id:", data.id);
+    console.log("[Flow Service] - versao salva:", savedConfig?.versao);
+    console.log("[Flow Service] - nodes salvos:", savedConfig?.nodes?.length);
+    console.log("[Flow Service] - primeira mensagem salva:", typeof savedMsg === 'string' ? savedMsg.substring(0, 50) : savedMsg);
+    console.log("[Flow Service] ========== FIM DO SAVE ==========");
 
     return {
       success: true,

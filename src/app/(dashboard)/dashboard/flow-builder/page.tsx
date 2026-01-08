@@ -63,6 +63,12 @@ export default function FlowBuilderPage() {
 
   // Salvar fluxo
   const handleSave = async (flow: CompanyFlow) => {
+    console.log("[FlowBuilder Page] ========== SALVANDO FLUXO ==========");
+    console.log("[FlowBuilder Page] user.id:", user?.id);
+    console.log("[FlowBuilder Page] flow.empresaId:", flow.empresaId);
+    console.log("[FlowBuilder Page] nodes count:", flow.nodes?.length);
+    console.log("[FlowBuilder Page] primeira mensagem:", (flow.nodes?.[0]?.data as any)?.mensagem?.substring(0, 50));
+
     try {
       const response = await fetch('/api/flow', {
         method: 'POST',
@@ -73,7 +79,10 @@ export default function FlowBuilderPage() {
         }),
       });
 
+      console.log("[FlowBuilder Page] Response status:", response.status);
+
       const data = await response.json();
+      console.log("[FlowBuilder Page] Response data:", JSON.stringify(data).substring(0, 200));
 
       if (!response.ok) {
         // Mostra erros de validação se houver
