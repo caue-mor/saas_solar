@@ -76,16 +76,19 @@ export function NodeEditorPanel({
     { value: 'nome', label: 'Nome', tipo: 'texto' },
     { value: 'interesse_bateria', label: 'Interesse em Bateria', tipo: 'booleano' },
     { value: 'area_disponivel', label: 'Área Disponível (m²)', tipo: 'numero' },
+    // Campos para perguntas Sim/Não personalizadas
+    { value: '_pergunta_sim_nao', label: '📋 Resposta Sim/Não (pergunta anterior)', tipo: 'sim_nao', opcoes: ['sim', 'nao'] },
+    { value: '_campo_personalizado', label: '✏️ Campo Personalizado...', tipo: 'custom' },
   ];
 
   // Operadores disponíveis para condições
   const operadoresCondicao = [
     { value: 'maior', label: 'Maior que (>)', tipos: ['numero'] },
     { value: 'menor', label: 'Menor que (<)', tipos: ['numero'] },
-    { value: 'igual', label: 'Igual a (=)', tipos: ['numero', 'texto', 'selecao', 'booleano'] },
-    { value: 'diferente', label: 'Diferente de (≠)', tipos: ['numero', 'texto', 'selecao', 'booleano'] },
-    { value: 'contem', label: 'Contém', tipos: ['texto'] },
-    { value: 'existe', label: 'Existe (preenchido)', tipos: ['numero', 'texto', 'selecao', 'booleano'] },
+    { value: 'igual', label: 'Igual a (=)', tipos: ['numero', 'texto', 'selecao', 'booleano', 'sim_nao', 'custom'] },
+    { value: 'diferente', label: 'Diferente de (≠)', tipos: ['numero', 'texto', 'selecao', 'booleano', 'sim_nao', 'custom'] },
+    { value: 'contem', label: 'Contém', tipos: ['texto', 'custom'] },
+    { value: 'existe', label: 'Existe (preenchido)', tipos: ['numero', 'texto', 'selecao', 'booleano', 'sim_nao', 'custom'] },
   ];
 
   const renderGreetingEditor = () => {
@@ -732,6 +735,64 @@ export function NodeEditorPanel({
                   </SelectContent>
                 </Select>
               )}
+
+              {/* Tipo Sim/Não para perguntas condicionais */}
+              {tipoCampo === 'sim_nao' && (
+                <Select
+                  value={String(data.valor || 'sim')}
+                  onValueChange={(value) => updateField('valor' as any, value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a resposta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sim">✅ Sim (resposta positiva)</SelectItem>
+                    <SelectItem value="nao">❌ Não (resposta negativa)</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Campo personalizado */}
+              {tipoCampo === 'custom' && (
+                <Input
+                  id="valor"
+                  value={String(data.valor || '')}
+                  onChange={(e) => updateField('valor' as any, e.target.value)}
+                  placeholder="Ex: sim, nao, ceramica..."
+                />
+              )}
+            </div>
+          )}
+
+          {/* Campo personalizado: input para nome do campo */}
+          {tipoCampo === 'custom' && (
+            <div className="space-y-2">
+              <Label htmlFor="campoPersonalizado">Nome do Campo (resposta_node-X)</Label>
+              <Input
+                id="campoPersonalizado"
+                value={data.campoPersonalizado || ''}
+                onChange={(e) => updateField('campoPersonalizado' as any, e.target.value)}
+                placeholder="Ex: resposta_node-5"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use o ID do nó de pergunta anterior. Ex: Se a pergunta é o nó 5, use "resposta_node-5"
+              </p>
+            </div>
+          )}
+
+          {/* Dica para Sim/Não */}
+          {tipoCampo === 'sim_nao' && (
+            <div className="space-y-2">
+              <Label htmlFor="campoSimNao">Campo da Pergunta Anterior</Label>
+              <Input
+                id="campoSimNao"
+                value={data.campoPersonalizado || ''}
+                onChange={(e) => updateField('campoPersonalizado' as any, e.target.value)}
+                placeholder="Ex: resposta_node-5"
+              />
+              <p className="text-xs text-muted-foreground">
+                Digite o ID do nó da pergunta Sim/Não. A IA detecta automaticamente respostas como "sim", "quero", "acho que não", etc.
+              </p>
             </div>
           )}
         </div>
@@ -742,13 +803,20 @@ export function NodeEditorPanel({
         <div className="rounded-lg bg-gray-50 p-3">
           <p className="text-xs font-medium text-gray-600 mb-2">Preview da Condição:</p>
           <p className="text-sm">
-            Se <span className="font-medium text-orange-600">{campoSelecionado?.label || data.campo}</span>
+            Se{' '}
+            <span className="font-medium text-orange-600">
+              {(tipoCampo === 'sim_nao' || tipoCampo === 'custom') && data.campoPersonalizado
+                ? data.campoPersonalizado
+                : campoSelecionado?.label || data.campo}
+            </span>
             {' '}
             <span className="font-mono bg-orange-100 px-1 rounded text-orange-800">
               {operadoresCondicao.find(o => o.value === data.operador)?.label || data.operador}
             </span>
             {data.operador !== 'existe' && (
-              <span className="ml-1 font-medium">{String(data.valor)}</span>
+              <span className="ml-1 font-medium">
+                {tipoCampo === 'sim_nao' ? (data.valor === 'sim' ? '✅ Sim' : '❌ Não') : String(data.valor)}
+              </span>
             )}
           </p>
           <div className="flex gap-4 mt-2 text-xs">

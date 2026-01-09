@@ -153,6 +153,7 @@ export interface ConditionNodeData extends BaseNodeData {
   valor: string | number | boolean;
   outputTrue: string; // ID do nó se verdadeiro
   outputFalse: string; // ID do nó se falso
+  campoPersonalizado?: string; // Campo personalizado para perguntas sim/não (ex: resposta_node-5)
 }
 
 export interface PropostaNodeData extends BaseNodeData {
