@@ -56,16 +56,28 @@ import { getContatos, deleteContato, toggleAtendimentoIA } from "@/services/cont
 import { getStatusLeads } from "@/services/status-leads";
 import type { ContatoFotovoltaico, StatusLeadFotovoltaico } from "@/types/database";
 
-// Função para formatar celular
+// Função para formatar celular (remove @s.whatsapp.net e código do país na exibição)
 function formatPhone(phone: string): string {
-  const cleaned = phone.replace(/\D/g, '');
-  if (cleaned.length === 11) {
-    return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 7)}-${cleaned.slice(7)}`;
+  // Remove @s.whatsapp.net ou similar do final
+  let cleanPhone = phone.replace(/@s\.whatsapp\.net$/i, '').replace(/@c\.us$/i, '');
+
+  // Remove caracteres não numéricos
+  const cleaned = cleanPhone.replace(/\D/g, '');
+
+  // Remove código do país (55) se presente (13 dígitos = 55 + DDD + número)
+  let finalNumber = cleaned;
+  if (cleaned.length === 13 && cleaned.startsWith('55')) {
+    finalNumber = cleaned.slice(2);
   }
-  if (cleaned.length === 10) {
-    return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 6)}-${cleaned.slice(6)}`;
+
+  // Formata o número
+  if (finalNumber.length === 11) {
+    return `(${finalNumber.slice(0, 2)}) ${finalNumber.slice(2, 7)}-${finalNumber.slice(7)}`;
   }
-  return phone;
+  if (finalNumber.length === 10) {
+    return `(${finalNumber.slice(0, 2)}) ${finalNumber.slice(2, 6)}-${finalNumber.slice(6)}`;
+  }
+  return finalNumber || phone;
 }
 
 // Função para obter iniciais
