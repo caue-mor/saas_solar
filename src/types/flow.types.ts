@@ -315,8 +315,18 @@ export interface FlowTemplate {
   descricao: string;
   categoria: 'basico' | 'completo' | 'rapido' | 'personalizado';
   icone: string;
-  nodes: Omit<SolarFlowNode, 'id'>[];
-  edges: Omit<SolarFlowEdge, 'id'>[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  nodes: Array<{
+    type: SolarNodeType;
+    position: { x: number; y: number };
+    data: Record<string, unknown> & { label: string };
+  }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  edges: Array<{
+    source: string;
+    target: string;
+    animated?: boolean;
+  }>;
   preview?: string; // URL da imagem de preview
 }
 
