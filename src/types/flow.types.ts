@@ -55,21 +55,29 @@ export const SOLAR_LEAD_FIELDS: FieldConfig[] = [
     { label: 'Investimento', value: 'INVESTIMENTO' },
   ]},
   { id: 'tipo_telhado', label: 'Tipo de Telhado', type: 'select', required: false, options: [
-    { label: 'Cerâmica', value: 'ceramica' },
-    { label: 'Metálico', value: 'metalico' },
+    { label: 'Cerâmica/Barro', value: 'ceramica' },
+    { label: 'Metálico/Zinco', value: 'metalico' },
     { label: 'Fibrocimento', value: 'fibrocimento' },
     { label: 'Laje', value: 'laje' },
     { label: 'Colonial', value: 'colonial' },
+    { label: 'Outro', value: 'outro' },
   ]},
   { id: 'forma_pagamento', label: 'Forma de Pagamento', type: 'select', required: false, options: [
     { label: 'Financiamento', value: 'financiamento' },
     { label: 'À Vista', value: 'avista' },
+    { label: 'Cartão de Crédito', value: 'cartao' },
     { label: 'A Definir', value: 'definir' },
   ]},
   { id: 'cidade', label: 'Cidade', type: 'text', required: false },
   { id: 'endereco', label: 'Endereço', type: 'text', required: false },
   { id: 'area_disponivel', label: 'Área Disponível (m²)', type: 'number', required: false },
   { id: 'interesse_bateria', label: 'Interesse em Bateria', type: 'boolean', required: false },
+  { id: 'pretende_expansao', label: 'Pretende Expansão', type: 'boolean', required: false, helpText: 'Se pretende adicionar novos equipamentos' },
+  { id: 'momento_compra', label: 'Momento de Compra', type: 'select', required: false, options: [
+    { label: 'Quero instalar logo', value: 'instalar_logo' },
+    { label: 'Ainda estou pesquisando', value: 'pesquisando' },
+  ]},
+  { id: 'preferencia_atendimento', label: 'Preferência de Atendimento', type: 'text', required: false, helpText: 'Presencial/ligação e horário preferido' },
 ];
 
 // ============================================
@@ -543,24 +551,242 @@ export const NODE_CATEGORIES = [
 // TEMPLATES PRÉ-DEFINIDOS
 // ============================================
 
+/**
+ * Template de Qualificação Padrão
+ * Sequência completa de perguntas para qualificação de leads
+ */
+export const TEMPLATE_QUALIFICACAO_PADRAO = {
+  nodes: [
+    // 1. SAUDAÇÃO + TIPO (casa/empresa)
+    {
+      type: 'GREETING' as SolarNodeType,
+      position: { x: 250, y: 0 },
+      data: {
+        label: 'Saudação',
+        mensagem: 'Olá, tudo bem? ☀️ Você está buscando energia solar para sua casa ou empresa?',
+        personalizarHorario: true,
+        mensagemManha: 'Bom dia! ☀️ Você está buscando energia solar para sua casa ou empresa?',
+        mensagemTarde: 'Boa tarde! ☀️ Você está buscando energia solar para sua casa ou empresa?',
+        mensagemNoite: 'Boa noite! 🌙 Você está buscando energia solar para sua casa ou empresa?',
+      },
+    },
+    // 2. CONSUMO
+    {
+      type: 'QUESTION' as SolarNodeType,
+      position: { x: 250, y: 150 },
+      data: {
+        label: 'Consumo',
+        pergunta: 'Qual o consumo mensal de energia? (pode ser em kWh ou o valor aproximado da conta)',
+        tipoResposta: 'texto',
+        campoDestino: 'consumo_kwh',
+        obrigatoria: true,
+        mensagemErro: 'Por favor, informe o consumo mensal de energia para que eu possa dimensionar o sistema ideal.',
+        maxTentativas: 2,
+      },
+    },
+    // 3. EXPANSÃO
+    {
+      type: 'QUESTION' as SolarNodeType,
+      position: { x: 250, y: 300 },
+      data: {
+        label: 'Expansão',
+        pergunta: 'Pretende adicionar novos equipamentos que consumam energia (ar-condicionado, piscina, carro elétrico)?',
+        tipoResposta: 'sim_nao',
+        campoDestino: 'pretende_expansao',
+        obrigatoria: true,
+        maxTentativas: 2,
+      },
+    },
+    // 4. TELHADO
+    {
+      type: 'QUESTION' as SolarNodeType,
+      position: { x: 250, y: 450 },
+      data: {
+        label: 'Tipo Telhado',
+        pergunta: 'Qual o tipo de telhado do local?',
+        tipoResposta: 'opcoes',
+        opcoes: ['Cerâmica/Barro', 'Metálico/Zinco', 'Fibrocimento', 'Laje', 'Colonial', 'Outro'],
+        campoDestino: 'tipo_telhado',
+        obrigatoria: true,
+        maxTentativas: 2,
+      },
+    },
+    // 5. CIDADE
+    {
+      type: 'QUESTION' as SolarNodeType,
+      position: { x: 250, y: 600 },
+      data: {
+        label: 'Cidade',
+        pergunta: 'Qual sua cidade?',
+        tipoResposta: 'texto',
+        campoDestino: 'cidade',
+        obrigatoria: true,
+        maxTentativas: 2,
+      },
+    },
+    // 6. MOMENTO DE COMPRA
+    {
+      type: 'QUESTION' as SolarNodeType,
+      position: { x: 250, y: 750 },
+      data: {
+        label: 'Momento Compra',
+        pergunta: 'Você já entende como funciona o sistema e quer instalar logo, ou ainda está pesquisando?',
+        tipoResposta: 'opcoes',
+        opcoes: ['Quero instalar logo', 'Ainda estou pesquisando'],
+        campoDestino: 'momento_compra',
+        obrigatoria: true,
+        maxTentativas: 2,
+      },
+    },
+    // 7. PAGAMENTO
+    {
+      type: 'FORMA_PAGAMENTO' as SolarNodeType,
+      position: { x: 250, y: 900 },
+      data: {
+        label: 'Forma Pagamento',
+        pergunta: 'Entre as opções abaixo, qual seria mais interessante para você?',
+        opcoes: [
+          { label: 'Financiamento', value: 'financiamento', descricao: 'Parcelas que cabem no bolso', destaque: true },
+          { label: 'À Vista', value: 'avista', descricao: 'Melhor desconto' },
+          { label: 'Cartão de Crédito', value: 'cartao', descricao: 'Parcelado no cartão' },
+          { label: 'Quero ver as opções', value: 'definir', descricao: 'Me apresente todas as formas' },
+        ],
+        mostrarFinanciamento: true,
+        parceirosFinanciamento: ['BV', 'Santander', 'Banco do Brasil'],
+      },
+    },
+    // 8. AGENDAMENTO
+    {
+      type: 'QUESTION' as SolarNodeType,
+      position: { x: 250, y: 1050 },
+      data: {
+        label: 'Agendamento',
+        pergunta: 'Prefere ver a proposta presencialmente ou por ligação? Qual melhor horário para você?',
+        tipoResposta: 'texto',
+        campoDestino: 'preferencia_atendimento',
+        obrigatoria: true,
+        maxTentativas: 2,
+      },
+    },
+    // 9. FINALIZAÇÃO
+    {
+      type: 'MESSAGE' as SolarNodeType,
+      position: { x: 250, y: 1200 },
+      data: {
+        label: 'Finalização',
+        mensagem: 'Perfeito! 🎉 Coletei todas as informações. Um de nossos especialistas entrará em contato no horário combinado para apresentar a melhor solução para você. Obrigado pelo interesse em energia solar!',
+        aguardarResposta: false,
+      },
+    },
+    // 10. FOLLOW-UP
+    {
+      type: 'FOLLOWUP' as SolarNodeType,
+      position: { x: 500, y: 1200 },
+      data: {
+        label: 'Follow-up',
+        ativar: true,
+        intervalos: [24, 48, 72],
+        mensagens: [
+          'Olá! ☀️ Passando para lembrar que seu orçamento de energia solar está pronto. Podemos agendar uma conversa?',
+          'Oi! Ainda temos uma proposta especial esperando por você. Quer que eu explique os benefícios?',
+          'Última mensagem! Se tiver interesse em economizar até 95% na conta de luz, me chame. Estou aqui para ajudar! 🌞',
+        ],
+        maxTentativas: 3,
+        pararSeResponder: true,
+      },
+    },
+    // 11. HANDOFF (transferência para atendente)
+    {
+      type: 'HANDOFF' as SolarNodeType,
+      position: { x: 500, y: 1350 },
+      data: {
+        label: 'Transferir',
+        motivo: 'Lead qualificado - pronto para atendimento',
+        mensagemCliente: 'Estou transferindo você para um de nossos especialistas que vai preparar sua proposta personalizada. Aguarde um momento! 🚀',
+        notificarEquipe: true,
+        canalNotificacao: 'whatsapp',
+        prioridade: 'alta',
+      },
+    },
+  ],
+  edges: [
+    { source: 'node-1', target: 'node-2', animated: true },
+    { source: 'node-2', target: 'node-3' },
+    { source: 'node-3', target: 'node-4' },
+    { source: 'node-4', target: 'node-5' },
+    { source: 'node-5', target: 'node-6' },
+    { source: 'node-6', target: 'node-7' },
+    { source: 'node-7', target: 'node-8' },
+    { source: 'node-8', target: 'node-9' },
+    { source: 'node-9', target: 'node-10' },
+    { source: 'node-9', target: 'node-11' },
+  ],
+};
+
 export const FLOW_TEMPLATES: FlowTemplate[] = [
+  {
+    id: 'qualificacao-padrao',
+    nome: 'Qualificação Padrão',
+    descricao: 'Fluxo completo de qualificação com 8 perguntas essenciais para converter leads em clientes',
+    categoria: 'completo',
+    icone: 'Stars',
+    nodes: TEMPLATE_QUALIFICACAO_PADRAO.nodes,
+    edges: TEMPLATE_QUALIFICACAO_PADRAO.edges,
+  },
   {
     id: 'basico',
     nome: 'Fluxo Básico',
     descricao: 'Fluxo simples para qualificação rápida de leads',
     categoria: 'basico',
     icone: 'Rocket',
-    nodes: [],
-    edges: [],
-  },
-  {
-    id: 'completo',
-    nome: 'Fluxo Completo',
-    descricao: 'Fluxo completo com análise de conta, telhado e proposta',
-    categoria: 'completo',
-    icone: 'Stars',
-    nodes: [],
-    edges: [],
+    nodes: [
+      {
+        type: 'GREETING' as SolarNodeType,
+        position: { x: 250, y: 0 },
+        data: {
+          label: 'Saudação',
+          mensagem: 'Olá! ☀️ Bem-vindo! Como posso ajudá-lo com energia solar hoje?',
+        },
+      },
+      {
+        type: 'CONSUMO' as SolarNodeType,
+        position: { x: 250, y: 150 },
+        data: {
+          label: 'Consumo',
+          pergunta: 'Qual o seu consumo médio mensal de energia em kWh?',
+          unidade: 'kWh',
+          campoDestino: 'consumo_kwh',
+        },
+      },
+      {
+        type: 'QUESTION' as SolarNodeType,
+        position: { x: 250, y: 300 },
+        data: {
+          label: 'Cidade',
+          pergunta: 'Qual sua cidade?',
+          tipoResposta: 'texto',
+          campoDestino: 'cidade',
+          obrigatoria: true,
+        },
+      },
+      {
+        type: 'HANDOFF' as SolarNodeType,
+        position: { x: 250, y: 450 },
+        data: {
+          label: 'Transferir',
+          motivo: 'Lead captado',
+          mensagemCliente: 'Obrigado pelas informações! Um especialista entrará em contato em breve.',
+          notificarEquipe: true,
+          canalNotificacao: 'whatsapp',
+          prioridade: 'media',
+        },
+      },
+    ],
+    edges: [
+      { source: 'node-1', target: 'node-2', animated: true },
+      { source: 'node-2', target: 'node-3' },
+      { source: 'node-3', target: 'node-4' },
+    ],
   },
   {
     id: 'rapido',
@@ -568,8 +794,42 @@ export const FLOW_TEMPLATES: FlowTemplate[] = [
     descricao: 'Apenas consumo e agendamento de visita',
     categoria: 'rapido',
     icone: 'Zap',
-    nodes: [],
-    edges: [],
+    nodes: [
+      {
+        type: 'GREETING' as SolarNodeType,
+        position: { x: 250, y: 0 },
+        data: {
+          label: 'Saudação',
+          mensagem: 'Olá! ☀️ Quer economizar até 95% na conta de luz?',
+        },
+      },
+      {
+        type: 'CONSUMO' as SolarNodeType,
+        position: { x: 250, y: 150 },
+        data: {
+          label: 'Consumo',
+          pergunta: 'Me conta: qual o valor médio da sua conta de luz?',
+          unidade: 'reais',
+          campoDestino: 'valor_conta',
+        },
+      },
+      {
+        type: 'VISITA_TECNICA' as SolarNodeType,
+        position: { x: 250, y: 300 },
+        data: {
+          label: 'Visita Técnica',
+          pergunta: 'Posso agendar uma visita técnica gratuita para fazer um orçamento sem compromisso?',
+          mostrarDisponibilidade: true,
+          diasDisponiveis: [1, 2, 3, 4, 5],
+          horariosDisponiveis: ['09:00', '10:00', '14:00', '15:00', '16:00'],
+          confirmarEndereco: true,
+        },
+      },
+    ],
+    edges: [
+      { source: 'node-1', target: 'node-2', animated: true },
+      { source: 'node-2', target: 'node-3' },
+    ],
   },
 ];
 

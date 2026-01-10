@@ -28,6 +28,7 @@ import {
   type CompanyFlow,
   type GlobalConfig,
   type SolarNodeType,
+  type FlowTemplate,
   NODE_DEFINITIONS,
   DEFAULT_GLOBAL_CONFIG,
 } from '@/types/flow.types';
@@ -168,6 +169,42 @@ function FlowBuilderInner({
     }
   }, [initialFlow, setNodes, setEdges]);
 
+  // Carregar template
+  const handleLoadTemplate = useCallback(
+    (template: FlowTemplate) => {
+      // Gera novos IDs para os nós
+      const newNodes: SolarFlowNode[] = template.nodes.map((node, index) => ({
+        ...node,
+        id: `node-${index + 1}`,
+        data: {
+          ...node.data,
+          label: node.data.label,
+        } as SolarFlowNode['data'],
+      }));
+
+      // Atualiza os edges com os novos IDs dos nós
+      const newEdges: SolarFlowEdge[] = template.edges.map((edge, index) => {
+        // Mapeia os IDs antigos para novos (node-1, node-2, etc)
+        const sourceIndex = parseInt(edge.source.replace('node-', '')) - 1;
+        const targetIndex = parseInt(edge.target.replace('node-', '')) - 1;
+
+        return {
+          ...edge,
+          id: `edge-${index + 1}`,
+          source: `node-${sourceIndex + 1}`,
+          target: `node-${targetIndex + 1}`,
+        };
+      });
+
+      setNodes(newNodes);
+      setEdges(newEdges);
+      nodeIdCounter.current = newNodes.length + 1;
+      setHasChanges(true);
+      setSelectedNodeId(null);
+    },
+    [setNodes, setEdges]
+  );
+
   // Exportar fluxo como JSON
   const handleExport = useCallback(() => {
     const flow: CompanyFlow = {
@@ -281,6 +318,7 @@ function FlowBuilderInner({
           setNodes((nds) => [...nds, newNode]);
           setHasChanges(true);
         }}
+        onLoadTemplate={handleLoadTemplate}
       />
 
       {/* Main Flow Area */}

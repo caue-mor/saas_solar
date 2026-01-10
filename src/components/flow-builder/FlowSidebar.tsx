@@ -27,10 +27,12 @@ import {
   NODE_CATEGORIES,
   FLOW_TEMPLATES,
   type SolarNodeType,
+  type FlowTemplate,
 } from '@/types/flow.types';
 
 interface FlowSidebarProps {
   onAddNode: (type: SolarNodeType) => void;
+  onLoadTemplate?: (template: FlowTemplate) => void;
 }
 
 // Mapeamento de ícones
@@ -52,7 +54,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Stars,
 };
 
-export function FlowSidebar({ onAddNode }: FlowSidebarProps) {
+export function FlowSidebar({ onAddNode, onLoadTemplate }: FlowSidebarProps) {
   const [activeTab, setActiveTab] = useState('nodes');
 
   // Handler para drag start
@@ -145,14 +147,22 @@ export function FlowSidebar({ onAddNode }: FlowSidebarProps) {
 
               {FLOW_TEMPLATES.map((template) => {
                 const Icon = ICONS[template.icone] || Rocket;
+                const hasNodes = template.nodes && template.nodes.length > 0;
 
                 return (
                   <div
                     key={template.id}
-                    className="cursor-pointer rounded-lg border p-4 transition-all hover:border-solar-300 hover:bg-solar-50"
+                    className={`rounded-lg border p-4 transition-all ${
+                      hasNodes
+                        ? 'cursor-pointer hover:border-solar-300 hover:bg-solar-50'
+                        : 'cursor-not-allowed opacity-60'
+                    }`}
                     onClick={() => {
-                      // TODO: Implementar carregamento de template
-                      alert(`Template "${template.nome}" será implementado em breve!`);
+                      if (hasNodes && onLoadTemplate) {
+                        if (confirm(`Carregar o template "${template.nome}"? Isso substituirá o fluxo atual.`)) {
+                          onLoadTemplate(template);
+                        }
+                      }
                     }}
                   >
                     <div className="flex items-start gap-3">
@@ -160,11 +170,16 @@ export function FlowSidebar({ onAddNode }: FlowSidebarProps) {
                         <Icon className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-medium">{template.nome}</h4>
                           <Badge variant="outline" className="text-[10px]">
                             {template.categoria}
                           </Badge>
+                          {hasNodes && (
+                            <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700">
+                              {template.nodes.length} etapas
+                            </Badge>
+                          )}
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {template.descricao}
