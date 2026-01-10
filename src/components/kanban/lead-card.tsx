@@ -19,7 +19,6 @@ import {
   DollarSign,
   Sun,
   User,
-  Edit,
   Trash2,
   Eye,
 } from "lucide-react";
@@ -114,10 +113,6 @@ export function LeadCard({
             <DropdownMenuItem onClick={() => onView?.(lead)}>
               <Eye className="mr-2 h-4 w-4" />
               Ver Detalhes
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onEdit?.(lead)}>
-              <Edit className="mr-2 h-4 w-4" />
-              Editar
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => onDelete?.(lead)}
